@@ -16,6 +16,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { GlobalSearch } from '../components/GlobalSearch';
 
 export const DashboardLayout: React.FC = () => {
   const location = useLocation();
@@ -23,7 +24,6 @@ export const DashboardLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const displayName = user?.name || 'Harish P';
   const displayRole = user?.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'Advocate';
@@ -39,16 +39,9 @@ export const DashboardLayout: React.FC = () => {
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Upload Document', path: '/upload', icon: Upload },
     { label: 'My Documents', path: '/library', icon: BookOpen },
-    { label: 'Reports', path: '/library?view=reports', icon: FileText },
+    { label: 'Reports', path: '/reports', icon: FileText },
     { label: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/library?search=${encodeURIComponent(searchQuery)}`);
-    }
-  };
 
   return (
     <div className="min-h-screen flex bg-[#F7F6F2] text-[#3F4754]">
@@ -71,10 +64,8 @@ export const DashboardLayout: React.FC = () => {
             {sidebarLinks.map((item) => {
               const Icon = item.icon;
               const isActive =
-                item.path === '/library?view=reports'
-                  ? location.pathname === '/library' && location.search.includes('view=reports')
-                  : location.pathname === item.path ||
-                    (item.path === '/dashboard' && location.pathname === '/dashboard');
+                location.pathname === item.path ||
+                (item.path === '/library' && location.pathname === '/documents');
 
               return (
                 <Link
@@ -103,7 +94,7 @@ export const DashboardLayout: React.FC = () => {
               Check our documentation or contact support.
             </p>
             <Link
-              to="/settings"
+              to="/support"
               className="inline-block mt-1 text-[11px] font-medium text-[#14243D] hover:underline"
             >
               Contact Support
@@ -183,18 +174,39 @@ export const DashboardLayout: React.FC = () => {
               </div>
 
               <nav className="space-y-1">
-                {sidebarLinks.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setMobileSidebarOpen(false)}
-                    className="flex items-center space-x-3 px-3 py-2 rounded-md text-xs font-medium text-[#3F4754] hover:bg-[#EAE7DF]"
-                  >
-                    <item.icon className="w-4 h-4 text-[#737986]" />
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
+                {sidebarLinks.map((item) => {
+                  const isActive =
+                    location.pathname === item.path ||
+                    (item.path === '/library' && location.pathname === '/documents');
+
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setMobileSidebarOpen(false)}
+                      className={`flex items-center space-x-3 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                        isActive
+                          ? 'bg-[#EAE7DF] text-[#14243D] font-semibold'
+                          : 'text-[#3F4754] hover:bg-[#EAE7DF]'
+                      }`}
+                    >
+                      <item.icon className={`w-4 h-4 ${isActive ? 'text-[#14243D]' : 'text-[#737986]'}`} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
               </nav>
+
+              <div className="pt-3 border-t border-[#E5E2DA]">
+                <Link
+                  to="/support"
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className="flex items-center space-x-3 px-3 py-2 rounded-md text-xs font-medium text-[#616875] hover:text-[#14243D] hover:bg-[#EAE7DF]"
+                >
+                  <HelpCircle className="w-4 h-4 text-[#737986]" />
+                  <span>Contact Support</span>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -212,17 +224,10 @@ export const DashboardLayout: React.FC = () => {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Document Search Input */}
-            <form onSubmit={handleSearchSubmit} className="relative w-full">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#737986]" />
-              <input
-                type="text"
-                placeholder="Search your documents..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-md border border-[#E5E2DA] bg-[#FFFFFF] text-[#17243A] placeholder-[#737986] focus:outline-none focus:border-[#14243D] transition-colors"
-              />
-            </form>
+            {/* Global Document Search with Dropdown */}
+            <div className="w-full">
+              <GlobalSearch />
+            </div>
           </div>
 
           {/* Right Header Utilities */}

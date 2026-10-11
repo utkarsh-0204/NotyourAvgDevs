@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Search,
+  X,
   Trash2,
   ExternalLink,
   Download,
@@ -15,24 +16,30 @@ import { DocumentRecord } from '../types';
 
 export const DocumentLibrary: React.FC = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
 
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+  const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [caseTypeFilter, setCaseTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Sync state whenever URL search param changes
+  useEffect(() => {
+    setSearchQuery(urlSearch);
+  }, [urlSearch]);
 
   const fetchDocs = async () => {
     setLoading(true);
     try {
       const res = await api.listDocuments({
-        search: searchQuery || undefined,
+        search: urlSearch || undefined,
         caseType: caseTypeFilter !== 'all' ? caseTypeFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
       });
-      setDocuments(res.documents);
+      setDocuments(res.documents || []);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -42,11 +49,24 @@ export const DocumentLibrary: React.FC = () => {
 
   useEffect(() => {
     fetchDocs();
-  }, [caseTypeFilter, statusFilter]);
+  }, [caseTypeFilter, statusFilter, urlSearch]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchDocs();
+    const newParams = new URLSearchParams(searchParams);
+    if (searchQuery.trim()) {
+      newParams.set('search', searchQuery.trim());
+    } else {
+      newParams.delete('search');
+    }
+    setSearchParams(newParams);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('search');
+    setSearchParams(newParams);
   };
 
   const handleDelete = async (id: string, name: string, e: React.MouseEvent) => {
@@ -95,8 +115,18 @@ export const DocumentLibrary: React.FC = () => {
             placeholder="Search by title, court, or case number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-md border border-[#E5E2DA] bg-white text-[#17243A] placeholder-[#737986] focus:outline-none focus:border-[#14243D] transition-colors"
+            className="w-full pl-9 pr-8 py-1.5 text-xs rounded-md border border-[#E5E2DA] bg-white text-[#17243A] placeholder-[#737986] focus:outline-none focus:border-[#14243D] transition-colors"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              className="absolute right-2.5 top-2.5 text-[#737986] hover:text-[#14243D]"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <select

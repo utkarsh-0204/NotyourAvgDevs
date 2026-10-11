@@ -51,6 +51,7 @@ class StorageService {
             { 'analysis.documentMetadata.title': { $regex: filter.search, $options: 'i' } },
             { 'analysis.documentMetadata.court': { $regex: filter.search, $options: 'i' } },
             { 'analysis.documentMetadata.caseNumber': { $regex: filter.search, $options: 'i' } },
+            { 'analysis.parties.name': { $regex: filter.search, $options: 'i' } },
           ];
         }
         const docs = await DocumentModel.find(query).sort({ createdAt: -1 }).lean();
@@ -78,7 +79,8 @@ class StorageService {
             d.originalName.toLowerCase().includes(q) ||
             d.analysis?.documentMetadata?.title?.toLowerCase().includes(q) ||
             d.analysis?.documentMetadata?.court?.toLowerCase().includes(q) ||
-            d.analysis?.documentMetadata?.caseNumber?.toLowerCase().includes(q)
+            d.analysis?.documentMetadata?.caseNumber?.toLowerCase().includes(q) ||
+            d.analysis?.parties?.some((p) => p.name?.toLowerCase().includes(q))
         );
       }
     }

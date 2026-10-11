@@ -6,6 +6,8 @@ import { Dashboard } from './pages/Dashboard';
 import { DocumentUpload } from './pages/DocumentUpload';
 import { AnalysisResults } from './pages/AnalysisResults';
 import { DocumentLibrary } from './pages/DocumentLibrary';
+import { ReportsPage } from './pages/ReportsPage';
+import { SupportPage } from './pages/SupportPage';
 import { SettingsInfo } from './pages/SettingsInfo';
 
 import { AuthProvider } from './context/AuthContext';
@@ -28,6 +30,9 @@ export const App: React.FC = () => {
             <Route path="/upload" element={<DocumentUpload />} />
             <Route path="/analysis/:id" element={<AnalysisResults />} />
             <Route path="/library" element={<DocumentLibrary />} />
+            <Route path="/documents" element={<Navigate to="/library" replace />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/support" element={<SupportPage />} />
             <Route path="/settings" element={<SettingsInfo />} />
           </Route>
 
