@@ -307,97 +307,106 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* ================================================== */}
-        {/* FULL-WIDTH FEATURE STRIP (Directly below hero grid) */}
         {/* ================================================== */}
-        <div className="pt-8 lg:pt-10 mt-10 lg:mt-14 border-t border-[#E7E2D9]">
+        {/* SECTION 1: PRIMARY FEATURES (Centered 4-Column Grid) */}
+        {/* ================================================== */}
+        <div className="pt-8 lg:pt-10 mt-10 lg:mt-12 border-t border-[#E7E2D9]">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
-                  Case Summary
-                </span>
+            <div className="flex justify-center w-full">
+              <div className="w-full max-w-[210px] space-y-1">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                  <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans sm:whitespace-nowrap">
+                    Case Summary
+                  </span>
+                </div>
+                <p className="text-xs text-[#667085] pl-6 font-sans">
+                  in simple language
+                </p>
               </div>
-              <p className="text-xs text-[#667085] pl-6 font-sans">
-                in simple language
-              </p>
             </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <BookOpen className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
-                  Key Legal Provisions
-                </span>
+            <div className="flex justify-center w-full">
+              <div className="w-full max-w-[210px] space-y-1">
+                <div className="flex items-center space-x-2">
+                  <BookOpen className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                  <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans sm:whitespace-nowrap">
+                    Key Legal Provisions
+                  </span>
+                </div>
+                <p className="text-xs text-[#667085] pl-6 font-sans">
+                  with references
+                </p>
               </div>
-              <p className="text-xs text-[#667085] pl-6 font-sans">
-                with references
-              </p>
             </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <FileCheck className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
-                  Arguments & Reasoning
-                </span>
+            <div className="flex justify-center w-full">
+              <div className="w-full max-w-[210px] space-y-1">
+                <div className="flex items-center space-x-2">
+                  <FileCheck className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                  <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans sm:whitespace-nowrap">
+                    Arguments & Reasoning
+                  </span>
+                </div>
+                <p className="text-xs text-[#667085] pl-6 font-sans">
+                  from original text
+                </p>
               </div>
-              <p className="text-xs text-[#667085] pl-6 font-sans">
-                from original text
-              </p>
             </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <Download className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
-                  Downloadable Report
-                </span>
+            <div className="flex justify-center w-full">
+              <div className="w-full max-w-[210px] space-y-1">
+                <div className="flex items-center space-x-2">
+                  <Download className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                  <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans sm:whitespace-nowrap">
+                    Downloadable Report
+                  </span>
+                </div>
+                <p className="text-xs text-[#667085] pl-6 font-sans">
+                  in PDF format
+                </p>
               </div>
-              <p className="text-xs text-[#667085] pl-6 font-sans">
-                in PDF format
-              </p>
             </div>
           </div>
         </div>
 
         {/* ================================================== */}
-        {/* 6. HONEST PRODUCT HIGHLIGHTS STRIP                 */}
+        {/* SECTION 2: ADDITIONAL FEATURES (Centered 4-Column Grid) */}
         {/* ================================================== */}
-        <div className="mt-16 pt-8 border-t border-[#E7E2D9]">
-          <div className="grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-[#E7E2D9] text-center">
-            <div className="py-3 px-4">
-              <div className="font-serif text-[17px] font-semibold text-[#14243D]">
+        <div className="pt-8 lg:pt-10 mt-10 lg:mt-12 border-t border-[#E7E2D9]">
+          <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-[#E7E2D9] text-center">
+            <div className="py-3 px-4 flex flex-col justify-center items-center">
+              <div className="font-serif text-[16px] sm:text-[17px] font-semibold text-[#14243D]">
                 Multiple document formats
               </div>
-              <div className="text-xs text-[#667085] mt-1">
+              <div className="text-xs text-[#667085] mt-1 font-sans">
                 Work with supported legal documents.
               </div>
             </div>
 
-            <div className="py-3 px-4">
-              <div className="font-serif text-[17px] font-semibold text-[#14243D]">
+            <div className="py-3 px-4 flex flex-col justify-center items-center">
+              <div className="font-serif text-[16px] sm:text-[17px] font-semibold text-[#14243D]">
                 Structured analysis
               </div>
-              <div className="text-xs text-[#667085] mt-1">
+              <div className="text-xs text-[#667085] mt-1 font-sans">
                 Facts, parties, laws, and outcomes.
               </div>
             </div>
 
-            <div className="py-3 px-4">
-              <div className="font-serif text-[17px] font-semibold text-[#14243D]">
+            <div className="py-3 px-4 flex flex-col justify-center items-center">
+              <div className="font-serif text-[16px] sm:text-[17px] font-semibold text-[#14243D]">
                 Source-linked results
               </div>
-              <div className="text-xs text-[#667085] mt-1">
+              <div className="text-xs text-[#667085] mt-1 font-sans">
                 Inspect the original supporting text.
               </div>
             </div>
 
-            <div className="py-3 px-4">
-              <div className="font-serif text-[17px] font-semibold text-[#14243D]">
+            <div className="py-3 px-4 flex flex-col justify-center items-center">
+              <div className="font-serif text-[16px] sm:text-[17px] font-semibold text-[#14243D]">
                 Document privacy
               </div>
-              <div className="text-xs text-[#667085] mt-1">
+              <div className="text-xs text-[#667085] mt-1 font-sans">
                 Review how your files are handled.
               </div>
             </div>
