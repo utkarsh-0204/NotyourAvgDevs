@@ -241,34 +241,34 @@ export const LandingPage: React.FC = () => {
       )}
 
       {/* ================================================== */}
-      {/* 1 & 2. HERO SECTION (56%/44% Layout, 3-Line Heading, Rounded Image) */}
+      {/* 1 & 2. HERO SECTION (56%/44% Layout, 3-Line Heading, Rounded Wide Image) */}
       {/* ================================================== */}
-      <section className="w-full max-w-[1260px] mx-auto px-6 lg:px-8 py-12 lg:py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-14 items-center">
+      <section className="w-full max-w-[1260px] mx-auto px-6 lg:px-8 pt-10 pb-12 lg:pt-14 lg:pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
           {/* LEFT COLUMN (~56% of width: 7/12 grid span) */}
           <div className="lg:col-span-7 flex flex-col justify-center">
             {/* 1. Eyebrow label */}
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#A88A4A] mb-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#A88A4A] mb-3.5">
               AI-POWERED LEGAL DOCUMENT INTELLIGENCE
             </div>
 
             {/* 2. Main 3-line heading (Highest Priority) */}
-            <h1 className="hero-heading text-4xl sm:text-5xl lg:text-[54px] xl:text-[58px] font-normal sm:font-medium text-[#14243D] tracking-tight text-left leading-[1.12]">
+            <h1 className="hero-heading text-4xl sm:text-5xl lg:text-[52px] xl:text-[56px] font-normal sm:font-medium text-[#14243D] tracking-tight text-left leading-[1.12]">
               <span className="block text-[#14243D]">Understand</span>
               <span className="block text-[#14243D]">Indian Court Judgements</span>
               <span className="hero-heading-accent block text-[#A88A4A]">in Minutes</span>
             </h1>
 
-            {/* 3. Supporting paragraph (~18px on desktop, muted slate-navy, controlled width) */}
-            <p className="text-[16px] lg:text-[18px] text-[#263449] leading-[1.6] max-w-xl mt-6 mb-7">
+            {/* 3. Supporting paragraph (Clean sans-serif, controlled width) */}
+            <p className="text-[15px] sm:text-[16px] lg:text-[17px] text-[#263449] leading-[1.6] max-w-xl mt-5 mb-7 font-sans">
               Upload any Indian court judgment in PDF and get a structured analysis with case summary, parties, legal provisions, court reasoning, and final outcome — all with source references.
             </p>
 
             {/* 4. Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3.5 mb-8">
+            <div className="flex flex-wrap items-center gap-3.5">
               <Link
                 to="/upload"
-                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-md bg-[#14243D] hover:bg-[#0D182A] text-white text-[15px] font-medium transition-colors shadow-subtle"
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-md bg-[#14243D] hover:bg-[#0D182A] text-white text-[15px] font-medium transition-colors shadow-subtle font-sans"
               >
                 <Upload className="w-4 h-4" />
                 <span>Upload Document</span>
@@ -277,66 +277,86 @@ export const LandingPage: React.FC = () => {
               <a
                 href="#how-it-works"
                 onClick={(e) => scrollToSection(e, 'how-it-works')}
-                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-md border border-[#D5D0C5] bg-white hover:bg-[#F3F1EB] text-[#14243D] text-[15px] font-medium transition-colors shadow-subtle cursor-pointer"
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-md border border-[#D5D0C5] bg-white hover:bg-[#F3F1EB] text-[#14243D] text-[15px] font-medium transition-colors shadow-subtle cursor-pointer font-sans"
               >
                 <PlayCircle className="w-4 h-4 text-[#A88A4A]" />
                 <span>See How It Works</span>
               </a>
             </div>
-
-            {/* 5. Four Compact Feature Summaries (Directly below hero CTA in clean horizontal row) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 border-t border-[#E7E2D9]">
-              <div className="space-y-1">
-                <div className="flex items-center space-x-1.5">
-                  <FileText className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                  <span className="text-xs font-semibold text-[#14243D]">Case Summary</span>
-                </div>
-                <p className="text-[11px] text-[#667085]">in simple language</p>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center space-x-1.5">
-                  <BookOpen className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                  <span className="text-xs font-semibold text-[#14243D]">Key Legal Provisions</span>
-                </div>
-                <p className="text-[11px] text-[#667085]">with references</p>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center space-x-1.5">
-                  <FileCheck className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                  <span className="text-xs font-semibold text-[#14243D]">Arguments & Reasoning</span>
-                </div>
-                <p className="text-[11px] text-[#667085]">from original text</p>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center space-x-1.5">
-                  <Download className="w-4 h-4 text-[#A88A4A] shrink-0" />
-                  <span className="text-xs font-semibold text-[#14243D]">Downloadable Report</span>
-                </div>
-                <p className="text-[11px] text-[#667085]">in PDF format</p>
-              </div>
-            </div>
           </div>
 
-          {/* RIGHT COLUMN (~44% of width: 5/12 grid span, More Rounded 26px Border Radius) */}
-          <div className="lg:col-span-5 relative flex justify-center">
-            <div className="relative w-full rounded-[26px] overflow-hidden border border-[#E7E2D9] bg-white shadow-[0_4px_24px_-4px_rgba(20,36,61,0.06)]">
+          {/* RIGHT COLUMN (~44% of width: 5/12 grid span, Wide & Shorter Image with 26px Border Radius) */}
+          <div className="lg:col-span-5 relative flex justify-center w-full">
+            <div className="relative w-full aspect-[1.6/1] rounded-[26px] overflow-hidden border border-[#E7E2D9] bg-white shadow-[0_4px_20px_-4px_rgba(20,36,61,0.06)]">
               <img
                 src="/supreme-court.jpg"
                 alt="Supreme Court of India architectural facade"
-                className="w-full h-[380px] sm:h-[420px] lg:h-[450px] object-cover object-center"
+                className="w-full h-full object-cover object-center"
               />
 
               {/* Floating Quote Card with Vertical Gold Bar */}
-              <div className="absolute bottom-5 left-5 right-5 sm:right-auto sm:max-w-xs p-3.5 rounded-xl bg-white/95 backdrop-blur-xs border border-[#E7E2D9]">
-                <div className="border-l-2 border-[#A88A4A] pl-3">
+              <div className="absolute bottom-3.5 left-3.5 right-3.5 sm:right-auto sm:max-w-[270px] p-2.5 sm:p-3 rounded-xl bg-white/95 backdrop-blur-sm border border-[#E7E2D9] shadow-subtle">
+                <div className="border-l-2 border-[#A88A4A] pl-2.5">
                   <p className="text-xs font-serif italic text-[#14243D] leading-snug">
                     "Making legal information more accessible"
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ================================================== */}
+        {/* FULL-WIDTH FEATURE STRIP (Directly below hero grid) */}
+        {/* ================================================== */}
+        <div className="pt-8 lg:pt-10 mt-10 lg:mt-14 border-t border-[#E7E2D9]">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
+                  Case Summary
+                </span>
+              </div>
+              <p className="text-xs text-[#667085] pl-6 font-sans">
+                in simple language
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <BookOpen className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
+                  Key Legal Provisions
+                </span>
+              </div>
+              <p className="text-xs text-[#667085] pl-6 font-sans">
+                with references
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <FileCheck className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
+                  Arguments & Reasoning
+                </span>
+              </div>
+              <p className="text-xs text-[#667085] pl-6 font-sans">
+                from original text
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Download className="w-4 h-4 text-[#A88A4A] shrink-0" />
+                <span className="text-[13px] sm:text-sm font-semibold text-[#14243D] font-sans">
+                  Downloadable Report
+                </span>
+              </div>
+              <p className="text-xs text-[#667085] pl-6 font-sans">
+                in PDF format
+              </p>
             </div>
           </div>
         </div>
