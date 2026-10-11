@@ -27,7 +27,8 @@ export default {
         },
       },
       fontFamily: {
-        serif: ['"Source Serif 4"', '"Libre Baskerville"', 'Georgia', 'serif'],
+        serif: ['"Cormorant Garamond"', '"Source Serif 4"', '"Playfair Display"', 'Georgia', 'serif'],
+        editorial: ['"Cormorant Garamond"', '"Playfair Display"', '"Source Serif 4"', 'Georgia', 'serif'],
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },

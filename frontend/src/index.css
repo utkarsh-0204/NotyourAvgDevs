@@ -44,3 +44,16 @@ body {
   background-color: rgba(169, 138, 75, 0.2);
   color: #14243D;
 }
+
+/* Editorial legal heading */
+.hero-heading {
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Source Serif 4', Georgia, serif;
+  line-height: 1.12;
+}
+
+.hero-heading-accent {
+  color: #A88A4A;
+  font-style: italic;
+  font-weight: 400;
+}
+
