@@ -10,6 +10,9 @@ router.post('/upload', uploadMiddleware.single('file'), DocumentController.uploa
 // Run Legal Analysis
 router.post('/:id/analyze', DocumentController.analyzeDocument);
 
+// Follow-up questions grounded in the document's own passages
+router.post('/:id/ask', DocumentController.askQuestion);
+
 // Document Records
 router.get('/', DocumentController.listDocuments);
 router.get('/:id', DocumentController.getDocument);

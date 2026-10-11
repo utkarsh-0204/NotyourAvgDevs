@@ -51,7 +51,7 @@ export const SettingsInfo: React.FC = () => {
                 }`}
               />
               <span className="font-semibold text-[#14243D]">
-                {isAiConnected ? 'Google Gemini Live API' : 'Deterministic Legal Rule Engine (Demo)'}
+                {isAiConnected ? status?.aiProvider?.service : 'Deterministic Legal Rule Engine (Demo)'}
               </span>
             </div>
           </div>
@@ -59,20 +59,21 @@ export const SettingsInfo: React.FC = () => {
           <div className="flex items-center justify-between pb-2 border-b border-[#E5E2DA]">
             <span className="text-[#737986]">Configured Model:</span>
             <span className="font-mono text-[#14243D]">
-              {status?.aiProvider?.model || 'gemini-2.5-flash'}
+              {status?.aiProvider?.model || 'Not configured'}
             </span>
           </div>
 
           <p className="text-[#616875] leading-relaxed pt-1">
             {isAiConnected
-              ? `Connected to Google Gemini API. Live LLM structured generation is actively processing uploads.`
+              ? `Connected to ${status?.aiProvider?.service}. Judgments are analysed page by page into a detailed, page-referenced report. Fallback: ${status?.aiProvider?.fallback || 'Local Rule-Based Engine'}.`
               : `External LLM key is not configured in backend environment. NyayaDrishti is executing in deterministic Indian legal extraction mode (extracts parties, provisions, and court orders via verified pattern heuristics).`}
           </p>
 
           <div className="p-3 rounded-md bg-[#FAF9F5] border border-[#E5E2DA] text-[11px] text-[#737986] space-y-1">
-            <span className="font-semibold text-[#14243D]">To enable live Google Gemini:</span>
+            <span className="font-semibold text-[#14243D]">To enable NVIDIA AI (recommended):</span>
             <p>
-              Set <code className="font-mono text-[#14243D]">GEMINI_API_KEY=your_key</code> in <code className="font-mono text-[#14243D]">backend/.env</code> and restart the server.
+              Set <code className="font-mono text-[#14243D]">NVIDIA_API_KEY</code> and <code className="font-mono text-[#14243D]">NVIDIA_MODEL</code> in <code className="font-mono text-[#14243D]">backend/.env</code> and restart the server.
+              Optionally set <code className="font-mono text-[#14243D]">GEMINI_API_KEY</code> as a fallback. Keys stay on the server and are never sent to the browser.
             </p>
           </div>
         </div>

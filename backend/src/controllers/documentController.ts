@@ -5,9 +5,109 @@ import crypto from 'crypto';
 import { storageService } from '../services/storageService.js';
 import { TextExtractor } from '../services/textExtractor.js';
 import { AIService } from '../services/aiService.js';
+import { QuestionAnsweringService } from '../services/questionAnswering.js';
+import { LEGAL_DISCLAIMER } from '../services/judgmentPipeline.js';
 import { IDocumentRecord } from '../models/Document.js';
 import { SAMPLE_DOCUMENTS } from '../utils/sampleDocuments.js';
 import { config } from '../config/index.js';
+import { DetailedReport, SourcedPoint } from '../schemas/analysisSchema.js';
+
+// Documents currently being analysed in this process, to avoid running the (slow, paid) pipeline twice.
+const analysesInProgress = new Set<string>();
+
+/** Page text is large and only needed server-side, so it is left out of API responses. */
+function withoutPages(doc: IDocumentRecord): Omit<IDocumentRecord, 'pages'> {
+  const { pages, ...rest } = doc;
+  return rest;
+}
+
+/** Ensures a record has per-page text, re-extracting older uploads that were stored before pages were tracked. */
+async function ensurePages(doc: IDocumentRecord): Promise<void> {
+  if (doc.pages?.length) return;
+  if (doc.filePath && fs.existsSync(doc.filePath) && /pdf/i.test(doc.mimeType + path.extname(doc.filePath))) {
+    try {
+      const extraction = await TextExtractor.extract(doc.filePath, doc.mimeType);
+      doc.pages = extraction.pages;
+      doc.pageSource = extraction.pageSource;
+      doc.emptyPages = extraction.emptyPages;
+      return;
+    } catch (err: any) {
+      console.warn(`[DocumentController] Could not re-extract pages for ${doc.id}: ${err.message}`);
+    }
+  }
+  doc.pages = TextExtractor.segmentText(doc.extractedText || '');
+  doc.pageSource = 'segment';
+  doc.emptyPages = [];
+}
+
+function renderDetailedReportMarkdown(r: DetailedReport): string {
+  const unit = r.coverage.pageReferenceType === 'pdf' ? 'p.' : 'seg.';
+  const ref = (pages: number[]) => (pages.length ? ` _(${unit} ${pages.join(', ')})_` : '');
+  const statusLabel: Record<string, string> = {
+    court_finding: 'Court finding',
+    party_allegation: 'Party claim',
+    undisputed_fact: 'Undisputed',
+    procedural: 'Procedural',
+    uncertain: 'Uncertain',
+  };
+  const point = (p: SourcedPoint) =>
+    `- ${p.status ? `**[${statusLabel[p.status] || p.status}]** ` : ''}${p.text}${ref(p.pages)}${p.verification === 'unverified' ? ' (not verified against the text)' : ''}`;
+  const list = (items: SourcedPoint[]) => (items.length ? items.map(point).join('\n') : '_Not stated in the judgment._');
+
+  return `## 7. DETAILED JUDGMENT REPORT
+
+### Case overview
+${r.overview}
+
+- Court: ${r.caseDetails.court || 'Not stated'}
+- Date: ${r.caseDetails.date || 'Not stated'}
+- Case number: ${r.caseDetails.caseNumber || 'Not stated'}
+- Bench: ${r.caseDetails.bench.join(', ') || 'Not stated'}
+${r.caseDetails.parties.map((p) => `- ${p.role}: ${p.name}${ref(p.pages)}`).join('\n')}
+
+### Background facts
+${list(r.background)}
+
+### Timeline
+${r.timeline.length ? r.timeline.map((t) => `- **${t.date}**: ${t.event}${ref(t.pages)}${t.verification === 'unverified' ? ' (not verified)' : ''}`).join('\n') : '_No dated events identified._'}
+
+### Arguments of each party
+${r.argumentsByParty.map((a) => `#### ${a.party}\n${list(a.points)}`).join('\n\n') || '_Not stated._'}
+
+### Legal issues considered
+${list(r.legalIssues)}
+
+### Laws and provisions (explained simply)
+${r.provisions.map((p) => `- **${p.name}**: ${p.plainExplanation}\n  - How it was used: ${p.howUsed}${ref(p.pages)}`).join('\n') || '_None identified._'}
+
+### Precedents cited
+${r.precedents.map((p) => `- **${p.name}**: ${p.howUsed}${ref(p.pages)}`).join('\n') || '_None identified._'}
+
+### Court's reasoning and findings
+${list(r.reasoning)}
+
+### Final judgment and directions
+**Outcome:** ${r.finalOutcome.outcomeCategory}
+
+${r.finalOutcome.summary}
+
+${list(r.finalOutcome.directions)}
+
+**Order verification:** ${r.finalOutcome.verification.status.replace('_', ' ')} (checked ${unit} ${r.finalOutcome.verification.checkedPages.join(', ') || 'n/a'})
+${r.finalOutcome.verification.notes.map((n) => `- ${n}`).join('\n')}
+
+### Practical meaning
+${list(r.practicalMeaning)}
+
+### Limitations
+${r.limitations.map((l) => `- ${l}`).join('\n') || '- None noted.'}
+
+### Uncertain or unsupported claims
+${r.uncertainClaims.map((u) => `- ${u.claim} - _${u.reason}_`).join('\n') || '- None flagged.'}
+
+_Coverage: ${r.coverage.pagesWithText}/${r.coverage.totalPages} ${r.coverage.pageReferenceType === 'pdf' ? 'pages' : 'segments'} with text, analysed in ${r.coverage.chunks} chunk(s)._
+`;
+}
 
 export class DocumentController {
   /**
@@ -52,6 +152,9 @@ export class DocumentController {
         mimeType: file.mimetype,
         filePath: file.path,
         extractedText: extraction.text,
+        pages: extraction.pages,
+        pageSource: extraction.pageSource,
+        emptyPages: extraction.emptyPages,
         pageCount: extraction.pageCount,
         isScannedPdf: isScanned,
         ocrRequired: isScanned,
@@ -75,6 +178,7 @@ export class DocumentController {
           wordCount: extraction.wordCount,
           isScannedPdf: saved.isScannedPdf,
           ocrRequired: saved.ocrRequired,
+          emptyPages: extraction.emptyPages,
           status: saved.status,
           errorMessage: saved.errorMessage,
           textSnippet: extraction.text.substring(0, 500),
@@ -108,22 +212,41 @@ export class DocumentController {
         return;
       }
 
-      // Update status to analyzing
-      doc.status = 'analyzing';
-      await storageService.save(doc);
+      if (analysesInProgress.has(id)) {
+        res.status(409).json({ error: 'Analysis is already running for this document. Please wait for it to finish.' });
+        return;
+      }
+      analysesInProgress.add(id);
 
-      // Execute AI analysis or fallback
-      const analysis = await AIService.analyzeDocument(doc.extractedText, doc.originalName, apiKeyHeader);
+      try {
+        await ensurePages(doc);
 
-      doc.analysis = analysis;
-      doc.status = 'analyzed';
-      doc.errorMessage = undefined;
-      const updated = await storageService.save(doc);
+        // Update status to analyzing
+        doc.status = 'analyzing';
+        await storageService.save(doc);
 
-      res.json({
-        message: 'Document analyzed successfully.',
-        document: updated,
-      });
+        // Execute AI analysis or fallback
+        const analysis = await AIService.analyzeDocument({
+          text: doc.extractedText,
+          originalFilename: doc.originalName,
+          pages: doc.pages,
+          pageSource: doc.pageSource,
+          emptyPages: doc.emptyPages,
+          overrideGeminiApiKey: apiKeyHeader,
+        });
+
+        doc.analysis = analysis;
+        doc.status = 'analyzed';
+        doc.errorMessage = undefined;
+        const updated = await storageService.save(doc);
+
+        res.json({
+          message: 'Document analyzed successfully.',
+          document: withoutPages(updated),
+        });
+      } finally {
+        analysesInProgress.delete(id);
+      }
     } catch (err: any) {
       console.error('[DocumentController.analyzeDocument] Error:', err);
       if (req.params.id) {
@@ -135,6 +258,47 @@ export class DocumentController {
         }
       }
       res.status(500).json({ error: err.message || 'Failed to complete analysis pipeline.' });
+    }
+  }
+
+  /**
+   * Answer a follow-up question about one document, grounded in its own passages
+   */
+  public static async askQuestion(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+      if (!question) {
+        res.status(400).json({ error: 'Please enter a question.' });
+        return;
+      }
+      if (question.length > 2000) {
+        res.status(400).json({ error: 'Question is too long (maximum 2000 characters).' });
+        return;
+      }
+      const history = Array.isArray(req.body?.history)
+        ? req.body.history
+            .filter((h: any) => typeof h?.question === 'string' && typeof h?.answer === 'string')
+            .slice(-3)
+            .map((h: any) => ({ question: h.question.slice(0, 2000), answer: h.answer.slice(0, 4000) }))
+        : [];
+
+      const doc = await storageService.getById(id);
+      if (!doc) {
+        res.status(404).json({ error: `Document with ID '${id}' was not found.` });
+        return;
+      }
+      if (!doc.extractedText || doc.extractedText.trim().length < 50) {
+        res.status(400).json({ error: 'This document has no extractable text to answer questions from.' });
+        return;
+      }
+
+      await ensurePages(doc);
+      const result = await QuestionAnsweringService.ask(question, doc.pages || [], doc.pageSource || 'segment', history, doc.id);
+      res.json({ ...result, pageReferenceType: doc.pageSource || 'segment' });
+    } catch (err: any) {
+      console.error('[DocumentController.askQuestion] Error:', err);
+      res.status(502).json({ error: `Could not answer the question: ${err.message || 'AI provider error'}` });
     }
   }
 
@@ -185,7 +349,7 @@ export class DocumentController {
         res.status(404).json({ error: 'Document not found.' });
         return;
       }
-      res.json({ document: doc });
+      res.json({ document: withoutPages(doc) });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to retrieve document.' });
     }
@@ -288,13 +452,15 @@ ${an.summary.reasoning.map((r) => `  * ${r}`).join('\n')}
 ${an.legalProvisions.map((lp) => `- **${lp.name}** [${lp.type}]: ${lp.context}`).join('\n')}
 
 ## 6. KEY EXTRACTED PASSAGES
-${an.importantPassages.map((ip) => `> "${ip.text}"\n> *Purpose: ${ip.purpose}*\n`).join('\n')}
+${an.importantPassages.map((ip) => `> "${ip.text}"\n> *Purpose: ${ip.purpose}*${ip.page ? ` (p. ${ip.page})` : ''}\n`).join('\n')}
+
+${an.detailedReport ? renderDetailedReportMarkdown(an.detailedReport) : ''}
 
 ---
 Generated by NyayaDrishti Legal Tech Engine
 Analysis Mode: ${an.aiAnalysisInfo.method} (${an.aiAnalysisInfo.model})
 Generated at: ${an.aiAnalysisInfo.analyzedAt}
-DISCLAIMER: AI-assisted legal technology platform. Does not constitute formal legal counsel.
+DISCLAIMER: ${LEGAL_DISCLAIMER}
 `;
         res.setHeader('Content-Type', 'text/markdown');
         res.setHeader('Content-Disposition', `attachment; filename="${doc.originalName.replace(/\.[^/.]+$/, '')}_analysis_report.md"`);
@@ -379,6 +545,9 @@ DISCLAIMER: AI-assisted legal technology platform. Does not constitute formal le
         mimeType: 'text/plain',
         filePath,
         extractedText: sample.content,
+        pages: TextExtractor.segmentText(sample.content),
+        pageSource: 'segment',
+        emptyPages: [],
         pageCount: Math.ceil(wordCount / 400),
         isScannedPdf: false,
         ocrRequired: false,
@@ -391,7 +560,7 @@ DISCLAIMER: AI-assisted legal technology platform. Does not constitute formal le
 
       res.status(201).json({
         message: `Sample document '${sample.title}' loaded successfully!`,
-        document: saved,
+        document: withoutPages(saved),
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to load sample document.' });
@@ -402,16 +571,27 @@ DISCLAIMER: AI-assisted legal technology platform. Does not constitute formal le
    * Health & AI Provider Status
    */
   public static async getHealthAndStatus(req: Request, res: Response): Promise<void> {
+    const isNvidiaReady = AIService.isNvidiaConfigured();
     const isGeminiReady = AIService.isGeminiConfigured();
+    const provider = isNvidiaReady ? 'nvidia' : isGeminiReady ? 'gemini' : 'local';
+    // Only non-secret configuration is reported here; API keys are never included.
     res.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       database: storageService.isConnectedToMongo() ? 'Connected (MongoDB)' : 'In-Memory Fallback',
       aiProvider: {
-        configured: isGeminiReady,
-        service: isGeminiReady ? 'Google Gemini API' : 'Local Rule-Based Deterministic Engine (Demo Mode)',
-        model: config.geminiModel,
-        isDemoMode: !isGeminiReady,
+        configured: isNvidiaReady || isGeminiReady,
+        provider,
+        service:
+          provider === 'nvidia'
+            ? 'NVIDIA API Catalog (hosted inference)'
+            : provider === 'gemini'
+            ? 'Google Gemini API'
+            : 'Local Rule-Based Deterministic Engine (Demo Mode)',
+        model: provider === 'nvidia' ? config.nvidiaModel : config.geminiModel,
+        fallback: provider === 'nvidia' && isGeminiReady ? `Google Gemini (${config.geminiModel})` : 'Local Rule-Based Engine',
+        questionAnswering: isNvidiaReady,
+        isDemoMode: !(isNvidiaReady || isGeminiReady),
         supportedFormats: ['PDF (.pdf)', 'Word (.docx)', 'Plain Text (.txt)'],
         maxFileSizeMB: config.maxFileSize / (1024 * 1024),
       },

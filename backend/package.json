@@ -6,16 +6,20 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "tsx --test tests/pipeline.test.ts tests/rag.test.ts",
+    "test:nvidia": "tsx scripts/testNvidia.ts",
+    "test:rag": "tsx scripts/testRag.ts"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "mammoth": "^1.9.0",
     "mongoose": "^8.9.5",
     "multer": "^1.4.5-lts.1",
+    "openai": "^7.32.0",
     "pdf-parse": "^1.1.1",
     "zod": "^3.24.2"
   },

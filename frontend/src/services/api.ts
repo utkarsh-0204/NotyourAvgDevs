@@ -1,4 +1,4 @@
-import { AuthResponse, DashboardStats, DocumentRecord, LegalAnalysisResult, SampleDocumentItem, SystemStatus, User } from '../types';
+import { AuthResponse, DashboardStats, DocumentRecord, LegalAnalysisResult, QuestionAnswerResponse, SampleDocumentItem, SystemStatus, User } from '../types';
 
 const API_BASE = '/api';
 
@@ -143,6 +143,21 @@ export const api = {
     if (!res.ok) {
       throw new Error(data.error || 'Document analysis failed.');
     }
+    return data;
+  },
+
+  async askQuestion(
+    id: string,
+    question: string,
+    history: { question: string; answer: string }[] = []
+  ): Promise<QuestionAnswerResponse> {
+    const res = await fetch(`${API_BASE}/documents/${id}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, history }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not answer the question.');
     return data;
   },
 

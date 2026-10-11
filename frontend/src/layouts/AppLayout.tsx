@@ -77,7 +77,7 @@ export const AppLayout: React.FC = () => {
             {/* AI Status Indicator */}
             {systemStatus && (
               <div
-                title={systemStatus.aiProvider.isDemoMode ? 'Rule-Based Local Engine' : `Gemini AI: ${systemStatus.aiProvider.model}`}
+                title={systemStatus.aiProvider.isDemoMode ? 'Rule-Based Local Engine' : `${systemStatus.aiProvider.service}: ${systemStatus.aiProvider.model}`}
                 className="flex items-center space-x-1.5 text-[11px] text-app-muted"
               >
                 <span
@@ -86,7 +86,7 @@ export const AppLayout: React.FC = () => {
                   }`}
                 />
                 <span className="hidden lg:inline">
-                  {systemStatus.aiProvider.isDemoMode ? 'Rule-based mode' : 'Gemini AI'}
+                  {systemStatus.aiProvider.isDemoMode ? 'Rule-based mode' : systemStatus.aiProvider.provider === 'nvidia' ? 'NVIDIA AI' : 'Gemini AI'}
                 </span>
               </div>
             )}

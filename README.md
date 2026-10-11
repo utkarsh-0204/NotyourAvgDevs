@@ -34,7 +34,7 @@ Built with a restrained, minimalist aesthetic inspired by modern SaaS interfaces
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide React, React Router.
 - **Backend**: Node.js, Express, TypeScript, Multer, `pdf-parse`, `mammoth`, MongoDB with Mongoose (with resilient in-memory fallback).
-- **AI Intelligence**: Google Gemini API via official `@google/genai` SDK with deterministic rule-based fallback mode for offline/local hackathon demo evaluation.
+- **AI Intelligence**: NVIDIA API Catalog hosted inference (`https://integrate.api.nvidia.com/v1`, default model `nvidia/nemotron-3-super-120b-a12b`) for detailed, page-referenced judgment reports and grounded Q&A. Google Gemini (`@google/genai`) is kept as a fallback, followed by the deterministic rule-based engine.
 
 ---
 
@@ -82,11 +82,34 @@ Create `backend/.env` (or copy from `backend/.env.example`):
 PORT=5001
 MONGODB_URI=mongodb://127.0.0.1:27017/nyayadrishti
 
-# Optional: Google Gemini API Key for live LLM inference
-# If left blank, NyayaDrishti runs in deterministic Indian Legal Rule-Based Demo Mode
+# NVIDIA hosted inference (primary). Keep the key only in backend/.env.
+NVIDIA_API_KEY=
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=nvidia/nemotron-3-super-120b-a12b
+
+# Optional: Google Gemini API Key (fallback if NVIDIA is not configured or fails)
+# If no AI key works, NyayaDrishti runs in deterministic Indian Legal Rule-Based Demo Mode
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
 NODE_ENV=development
+```
+
+See `backend/.env.example` for optional tuning (timeouts, retries, chunk size, concurrency).
+
+### How the NVIDIA judgment report works
+1. Text is extracted **page by page** (real PDF page numbers; TXT/DOCX are split into ~400-word segments). Pages without a text layer are listed as needing OCR (OCR itself is not built in).
+2. The judgment is split into page-aligned chunks; each chunk is summarised into detailed, page-referenced notes. Oversized chunks are split automatically; failed chunks are reported in the report, never silently dropped.
+3. Notes are consolidated and turned into a structured plain-English report: overview, background facts, timeline, arguments of each party, issues, provisions explained simply, reasoning, final order and directions, practical meaning and limitations.
+4. Each point carries the pages it came from and a short verbatim quote. The backend checks every quote against the extracted text, corrects wrong page numbers and flags anything it cannot find.
+5. The final order is re-checked against the concluding pages of the original text.
+6. Follow-up questions ("Ask the Judgment", `POST /api/documents/:id/ask`) use **RAG**: the first question splits the judgment into overlapping, page-aware chunks and embeds them with NVIDIA's embedding model (`NVIDIA_EMBEDDING_MODEL`, default `nvidia/nemotron-3-embed-1b`), stored in MongoDB collection `documentchunks` (in-memory if MongoDB is down). Each question is matched by meaning (embeddings) and by keywords (BM25), the best passages are sent to the NVIDIA chat model, and the answer cites pages. If embeddings fail, keyword search is used automatically. Chunks are deleted with their document and rebuilt only if the text or embedding model changes.
+
+### Tests
+```bash
+cd backend
+npm test             # offline tests (no API key needed)
+npm run test:nvidia  # live test against NVIDIA using backend/.env (optionally: npm run test:nvidia -- path/to/judgment.pdf)
+npm run test:rag     # small live check of RAG search (~3 small NVIDIA requests)
 ```
 
 ---
@@ -100,7 +123,8 @@ NODE_ENV=development
 | `GET` | `/api/samples` | List of preloaded Indian legal judgments |
 | `POST` | `/api/samples/load` | Instant 1-click loading of a sample judgment |
 | `POST` | `/api/documents/upload` | Multipart file upload and text extraction |
-| `POST` | `/api/documents/:id/analyze`| Runs AI or deterministic legal extraction |
+| `POST` | `/api/documents/:id/analyze`| Runs NVIDIA detailed analysis (fallback: Gemini, then deterministic extraction) |
+| `POST` | `/api/documents/:id/ask` | Grounded follow-up question about one judgment (`{ "question": "..." }`) |
 | `GET` | `/api/documents` | List stored court documents (with search & filters) |
 | `GET` | `/api/documents/:id` | Full document record with analysis |
 | `GET` | `/api/documents/:id/export?format=markdown` | Download formatted markdown case brief |

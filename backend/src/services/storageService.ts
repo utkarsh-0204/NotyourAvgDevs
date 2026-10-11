@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import { DocumentModel, inMemoryDocumentStore, IDocumentRecord } from '../models/Document.js';
+import { documentChunkStore } from '../models/DocumentChunk.js';
 
 class StorageService {
   public isConnectedToMongo(): boolean {
@@ -101,6 +102,9 @@ class StorageService {
       }
     }
 
+    // Remove the document's search index (RAG chunks and embeddings) too.
+    await documentChunkStore.deleteForDocument(id);
+
     if (this.isConnectedToMongo()) {
       try {
         await DocumentModel.deleteOne({ id });
@@ -109,6 +113,20 @@ class StorageService {
       }
     }
     return inMemoryDocumentStore.deleteById(id);
+  }
+
+  /**
+   * Analyses run inside the request; if the server stops or restarts mid-way (e.g. `tsx watch` reloading),
+   * the record would stay 'analyzing' forever. Reset such records so they can be analysed again.
+   */
+  async resetInterruptedAnalyses(): Promise<number> {
+    const stuck = (await this.list()).filter((d) => d.status === 'analyzing');
+    for (const doc of stuck) {
+      doc.status = 'extracted';
+      doc.errorMessage = 'The previous analysis was interrupted because the server restarted. It will run again when you open the document.';
+      await this.save(doc);
+    }
+    return stuck.length;
   }
 
   async getDashboardStats() {

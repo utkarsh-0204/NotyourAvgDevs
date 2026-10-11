@@ -256,7 +256,7 @@ export const DocumentUpload: React.FC = () => {
                   Extracted Document Opening
                 </span>
                 <div className="p-3.5 rounded-md border border-[#E5E2DA] bg-[#FAF9F5] font-serif text-[11px] text-[#3F4754] max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                  {uploadedDoc.extractedText?.substring(0, 900) || 'No text extracted.'}
+                  {(uploadedDoc.extractedText || uploadedDoc.textSnippet)?.substring(0, 900) || 'No text extracted.'}
                 </div>
               </div>
 

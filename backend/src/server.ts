@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { config } from './config/index.js';
 import documentRoutes from './routes/documentRoutes.js';
 import { DocumentController } from './controllers/documentController.js';
+import { storageService } from './services/storageService.js';
 
 import authRoutes from './routes/authRoutes.js';
 
@@ -68,9 +69,19 @@ async function startServer() {
     console.warn(`[NyayaDrishti Server] MongoDB connection warning: ${err.message}. Operating with in-memory resilient data store.`);
   }
 
+  const reset = await storageService.resetInterruptedAnalyses();
+  if (reset > 0) {
+    console.log(`[NyayaDrishti Server] Reset ${reset} document(s) whose analysis was interrupted by a restart.`);
+  }
+
   app.listen(config.port, () => {
     console.log(`[NyayaDrishti Server] Server running on http://localhost:${config.port}`);
-    console.log(`[NyayaDrishti Server] AI Mode: ${config.geminiApiKey ? `Active Gemini (${config.geminiModel})` : 'Local Rule-Based Deterministic Engine (Demo Mode)'}`);
+    const aiMode = config.nvidiaApiKey
+      ? `NVIDIA (${config.nvidiaModel})${config.geminiApiKey ? `, Gemini fallback (${config.geminiModel})` : ''}`
+      : config.geminiApiKey
+      ? `Active Gemini (${config.geminiModel})`
+      : 'Local Rule-Based Deterministic Engine (Demo Mode)';
+    console.log(`[NyayaDrishti Server] AI Mode: ${aiMode}`);
   });
 }
 

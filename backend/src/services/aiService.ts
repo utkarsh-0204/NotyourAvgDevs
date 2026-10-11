@@ -2,6 +2,18 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { config } from '../config/index.js';
 import { LegalAnalysisResult, LegalAnalysisResultSchema } from '../schemas/analysisSchema.js';
 import { DeterministicLegalExtractor } from './deterministicExtractor.js';
+import { NvidiaClient } from './nvidiaClient.js';
+import { JudgmentPipeline, LEGAL_DISCLAIMER } from './judgmentPipeline.js';
+import { PageText, PageSource, TextExtractor } from './textExtractor.js';
+
+export interface AnalysisInput {
+  text: string;
+  originalFilename: string;
+  pages?: PageText[];
+  pageSource?: PageSource;
+  emptyPages?: number[];
+  overrideGeminiApiKey?: string;
+}
 
 export class AIService {
   private static geminiClient: GoogleGenAI | null = null;
@@ -18,32 +30,58 @@ export class AIService {
     return this.geminiClient;
   }
 
+  public static isNvidiaConfigured(): boolean {
+    return NvidiaClient.isConfigured();
+  }
+
   /**
-   * Main analysis method. Attempts Gemini AI if configured, otherwise falls back to deterministic rule-based extractor.
+   * Main analysis method.
+   * Order of preference: NVIDIA detailed chunked pipeline -> Gemini (single call) -> deterministic rule-based extractor.
    */
-  public static async analyzeDocument(
-    text: string,
-    originalFilename: string,
-    overrideApiKey?: string
-  ): Promise<LegalAnalysisResult> {
-    const effectiveApiKey = overrideApiKey || config.geminiApiKey;
+  public static async analyzeDocument(input: AnalysisInput): Promise<LegalAnalysisResult> {
+    const { text, originalFilename, overrideGeminiApiKey } = input;
+    const fallbackNotes: string[] = [];
+
+    if (NvidiaClient.isConfigured()) {
+      try {
+        const pages = input.pages?.length ? input.pages : TextExtractor.segmentText(text);
+        const pageSource: PageSource = input.pages?.length ? input.pageSource || 'pdf' : 'segment';
+        console.log(`[AIService] Initiating NVIDIA analysis for ${originalFilename} using model ${config.nvidiaModel}`);
+        return await JudgmentPipeline.analyze(pages, pageSource, input.emptyPages || [], originalFilename);
+      } catch (error: any) {
+        console.warn(`[AIService] NVIDIA analysis failed: ${error.message}. Trying fallback provider.`);
+        fallbackNotes.push(`NVIDIA AI analysis failed (${error.message || 'API error'}), so a fallback engine produced this result. It is less detailed and has no verified page references.`);
+      }
+    }
+
+    const effectiveApiKey = overrideGeminiApiKey || config.geminiApiKey;
 
     if (effectiveApiKey && effectiveApiKey.trim().length > 0) {
       try {
         console.log(`[AIService] Initiating Gemini analysis for ${originalFilename} using model ${config.geminiModel}`);
-        return await this.analyzeWithGemini(text, originalFilename, effectiveApiKey);
+        const result = await this.analyzeWithGemini(text, originalFilename, effectiveApiKey);
+        if (text.length > 60000) {
+          fallbackNotes.push(
+            'The Gemini fallback only reads the beginning, a middle section and the end of very long judgments, so parts of this document were not analysed. Configure NVIDIA_API_KEY for full-length analysis.'
+          );
+        }
+        result.summary.limitations.push(...fallbackNotes, LEGAL_DISCLAIMER);
+        return result;
       } catch (error: any) {
         console.warn(`[AIService] Gemini API call failed or encountered error: ${error.message}. Falling back to Local Rule-Based Engine.`);
         const fallback = DeterministicLegalExtractor.analyze(text, originalFilename);
         fallback.summary.limitations.push(
+          ...fallbackNotes,
           `Primary Gemini AI call failed (${error.message || 'API error'}). Results computed via deterministic Indian legal rules.`
         );
         return fallback;
       }
     }
 
-    console.log(`[AIService] No Gemini API key provided. Using Local Rule-Based Engine (Demo Mode).`);
-    return DeterministicLegalExtractor.analyze(text, originalFilename);
+    console.log(`[AIService] No AI provider succeeded or configured. Using Local Rule-Based Engine (Demo Mode).`);
+    const fallback = DeterministicLegalExtractor.analyze(text, originalFilename);
+    fallback.summary.limitations.push(...fallbackNotes);
+    return fallback;
   }
 
   /**

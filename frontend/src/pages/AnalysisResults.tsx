@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { DocumentRecord, LegalAnalysisResult, LegalProvision } from '../types';
+import { DetailedReportView, AskJudgmentPanel, PageRef } from '../components/DetailedReportView';
 
 export const AnalysisResults: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -31,8 +32,8 @@ export const AnalysisResults: React.FC = () => {
 
   // Workspace Tabs
   const [activeTab, setActiveTab] = useState<
-    'document' | 'summary' | 'parties' | 'provisions' | 'arguments' | 'reasoning' | 'outcome' | 'precedents'
-  >('document');
+    'summary' | 'analysis' | 'ask' | 'document'
+  >('summary');
 
   // Document Viewer state
   const [zoomLevel, setZoomLevel] = useState(125);
@@ -68,7 +69,12 @@ export const AnalysisResults: React.FC = () => {
       const res = await api.analyzeDocument(id);
       setDocumentRecord(res.document);
     } catch (err: any) {
-      setError(err.message || 'Analysis failed.');
+      // Another tab/request is already analysing this document: wait for it instead of failing.
+      if (/already running/i.test(err.message || '')) {
+        setDocumentRecord((prev) => (prev ? { ...prev, status: 'analyzing' } : prev));
+      } else {
+        setError(err.message || 'Analysis failed.');
+      }
     } finally {
       setAnalyzing(false);
     }
@@ -78,10 +84,29 @@ export const AnalysisResults: React.FC = () => {
     loadDocument();
   }, [id]);
 
+  // Long judgments can take several minutes. If the analysis was started elsewhere, poll until it finishes.
+  useEffect(() => {
+    if (!id || analyzing || documentRecord?.status !== 'analyzing') return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await api.getDocument(id);
+        if (res.document.status !== 'analyzing') {
+          setDocumentRecord(res.document);
+        }
+      } catch {
+        // keep polling
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [id, analyzing, documentRecord?.status]);
+
   const copySummaryText = () => {
     if (!documentRecord?.analysis) return;
     const s = documentRecord.analysis.summary;
-    navigator.clipboard.writeText(s.overview);
+    const r = documentRecord.analysis.detailedReport;
+    navigator.clipboard.writeText(
+      [r?.overview || s.overview, `Outcome: ${s.outcomeCategory}`, r?.finalOutcome.summary || s.outcome].filter(Boolean).join('\n\n')
+    );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -95,7 +120,7 @@ export const AnalysisResults: React.FC = () => {
     );
   }
 
-  if (error || !documentRecord) {
+  if (!documentRecord) {
     return (
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
         <AlertCircle className="w-6 h-6 text-[#C44B4B] mx-auto" />
@@ -116,7 +141,34 @@ export const AnalysisResults: React.FC = () => {
 
   const analysis: LegalAnalysisResult | undefined = documentRecord.analysis;
   const meta = analysis?.documentMetadata;
-  const isPuttaswamy = documentRecord.originalName.toLowerCase().includes('puttaswamy') || meta?.title?.toLowerCase().includes('puttaswamy');
+  const report = analysis?.detailedReport;
+  const refType: 'pdf' | 'segment' = report?.coverage.pageReferenceType || (documentRecord.mimeType.includes('pdf') ? 'pdf' : 'segment');
+  const isBusy = analyzing || documentRecord.status === 'analyzing';
+  const shorten = (t: string, max = 220) => (t.length > max ? `${t.slice(0, t.lastIndexOf(' ', max - 1) > 0 ? t.lastIndexOf(' ', max - 1) : max - 1)}…` : t);
+  const keyTakeaways: string[] = (report
+    ? [
+        ...report.finalOutcome.directions.slice(0, 2).map((d) => d.text),
+        ...report.reasoning.filter((r) => r.status === 'court_finding' && r.verification !== 'unverified').slice(0, 2).map((r) => r.text),
+      ]
+    : (analysis?.summary?.reasoning || []).slice(0, 4)
+  ).map((t) => shorten(t));
+  // Same judge written differently ("J.R. Midha" / "J.R. MIDHA, J.") is shown once.
+  const benchNames = Array.from(
+    new Map(
+      (meta?.bench || []).map((b) => [
+        b
+          .toLowerCase()
+          .replace(/\b(hon'?ble|honourable|mrs?|ms|dr|chief justice|justice)\b\.?/g, ' ')
+          .replace(/,?\s*\b(c\.?\s?j\.?\s?i?|j)\.?\s*$/, '')
+          .replace(/[^a-z]/g, ''),
+        b,
+      ])
+    ).values()
+  );
+  const goToTab = (tab: 'summary' | 'analysis' | 'ask' | 'document') => {
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Constitutional and statutory provisions grouping
   const constitutionalProvisions = (analysis?.legalProvisions || []).filter(
@@ -130,7 +182,7 @@ export const AnalysisResults: React.FC = () => {
   const activeProvision: LegalProvision | undefined =
     allProvisions[selectedProvisionIndex] || allProvisions[0];
 
-  const totalPages = documentRecord.pageCount || (isPuttaswamy ? 285 : 4);
+  const totalPages = documentRecord.pageCount || 1;
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
@@ -150,18 +202,37 @@ export const AnalysisResults: React.FC = () => {
               <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#14243D] tracking-tight">
                 {meta?.title || documentRecord.originalName.replace(/\.[^/.]+$/, '')}
               </h1>
-              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#EBF7F1] text-[#23845D]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#23845D]"></span>
-                <span>Completed</span>
-              </span>
+              {isBusy ? (
+                <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#FDF6E7] text-[#9A6B12]">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  <span>Analyzing</span>
+                </span>
+              ) : analysis ? (
+                <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#EBF7F1] text-[#23845D]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#23845D]"></span>
+                  <span>Completed</span>
+                </span>
+              ) : null}
             </div>
 
             <div className="text-xs text-[#737986] flex flex-wrap items-center gap-x-2">
-              <span>{meta?.court || 'Supreme Court of India'}</span>
+              <span>{meta?.court || 'Court not identified'}</span>
               <span>|</span>
-              <span>{analysis?.caseClassification?.primary || 'Constitutional Law'}</span>
+              <span>{analysis?.caseClassification?.primary || 'Unclassified'}</span>
               <span>|</span>
-              <span>{meta?.decisionDate || '24 August 2017'}</span>
+              <span>{meta?.decisionDate || 'Date not identified'}</span>
+              {analysis && (
+                <>
+                  <span>|</span>
+                  <span>
+                    {analysis.aiAnalysisInfo.method === 'nvidia-ai'
+                      ? `NVIDIA AI (${analysis.aiAnalysisInfo.model})`
+                      : analysis.aiAnalysisInfo.method === 'gemini-ai'
+                      ? `Gemini (${analysis.aiAnalysisInfo.model})`
+                      : 'Rule-based engine'}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -204,14 +275,11 @@ export const AnalysisResults: React.FC = () => {
         <div className="pt-2 overflow-x-auto">
           <nav className="flex space-x-6 border-b border-[#E5E2DA] text-xs whitespace-nowrap">
             {[
+              // Main features first; the original document viewer is a separate tool, kept last.
+              { id: 'summary', label: 'Summary' },
+              { id: 'analysis', label: 'Analysis' },
+              { id: 'ask', label: 'Ask the Judgment' },
               { id: 'document', label: 'Document' },
-              { id: 'summary', label: 'Case Summary' },
-              { id: 'parties', label: 'Parties' },
-              { id: 'provisions', label: 'Legal Provisions' },
-              { id: 'arguments', label: 'Arguments' },
-              { id: 'reasoning', label: 'Court Reasoning' },
-              { id: 'outcome', label: 'Outcome' },
-              { id: 'precedents', label: 'Precedents' },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
               return (
@@ -235,13 +303,177 @@ export const AnalysisResults: React.FC = () => {
         </div>
       </div>
 
+      {isBusy && (
+        <div className="p-3 rounded-md bg-[#FDF6E7] border border-[#F0E2C2] text-xs text-[#7A5A12] flex items-center space-x-2">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+          <span>
+            Analysing the judgment page by page. Long judgments can take several minutes; you can leave this page open and the report will appear when ready.
+          </span>
+        </div>
+      )}
+      {error && (
+        <div className="p-3 rounded-md bg-[#FBEBEB] border border-[#F3CFCF] text-xs text-[#C44B4B] flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={runAnalysis} className="font-semibold hover:underline">Retry analysis</button>
+        </div>
+      )}
+      {analysis && analysis.aiAnalysisInfo.method !== 'nvidia-ai' && !isBusy && (
+        <div className="p-3 rounded-md bg-[#FAF9F5] border border-[#E5E2DA] text-[11px] text-[#737986]">
+          This result was produced by the {analysis.aiAnalysisInfo.method === 'gemini-ai' ? 'Gemini fallback' : 'rule-based fallback engine'}, so the detailed page-referenced report is not available.
+          {analysis.summary.limitations.length > 0 && ` ${analysis.summary.limitations[0]}`}
+        </div>
+      )}
+
       {/* 3. MAIN WORKSPACE CONTENT ACCORDING TO ACTIVE TAB */}
+
+      {activeTab === 'analysis' && report && <DetailedReportView report={report} hideOverview />}
+
+      {/* SUMMARY: overview, final outcome, case details and key takeaways */}
+      {activeTab === 'summary' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-8 border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E5E2DA]">
+              <h2 className="font-serif font-bold text-lg text-[#14243D]">Case Summary</h2>
+              <button
+                onClick={copySummaryText}
+                disabled={!analysis}
+                className="inline-flex items-center space-x-1 text-xs text-[#737986] hover:text-[#14243D] transition-colors disabled:opacity-40"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs sm:text-sm text-[#3F4754] leading-relaxed">
+              {(report?.overview || analysis?.summary?.overview || (isBusy ? 'Analysis in progress…' : 'No analysis available yet.'))
+                .split(/\n\s*\n/)
+                .map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+            </div>
+
+            {analysis && (
+              <div className="space-y-3 pt-4 border-t border-[#E5E2DA]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs uppercase font-bold tracking-wider text-[#737986]">Final Outcome:</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-[#EBF7F1] text-[#23845D]">
+                    {report?.finalOutcome.outcomeCategory || analysis.summary.outcomeCategory}
+                  </span>
+                  {report && (
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                        report.finalOutcome.verification.status === 'verified'
+                          ? 'bg-[#EBF7F1] text-[#23845D]'
+                          : report.finalOutcome.verification.status === 'partially_verified'
+                          ? 'bg-[#FDF6E7] text-[#9A6B12]'
+                          : 'bg-[#FBEBEB] text-[#C44B4B]'
+                      }`}
+                    >
+                      Order {report.finalOutcome.verification.status.replace('_', ' ')} against the judgment text
+                    </span>
+                  )}
+                </div>
+                {report ? (
+                  <>
+                    <p className="font-serif text-xs sm:text-sm text-[#14243D] leading-relaxed">{report.finalOutcome.summary}</p>
+                    {report.finalOutcome.directions.length > 0 && (
+                      <ul className="space-y-1.5">
+                        {report.finalOutcome.directions.map((d, i) => (
+                          <li key={i} className="flex items-start space-x-2 text-xs sm:text-sm text-[#3F4754]">
+                            <span className="text-[#A98A4B] font-bold">•</span>
+                            <span>
+                              {d.text}
+                              <PageRef pages={d.pages} type={refType} />
+                              {d.verification === 'unverified' && <span className="ml-1.5 text-[10px] font-semibold text-[#C44B4B]">not verified</span>}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <p className="font-serif text-xs sm:text-sm text-[#14243D] leading-relaxed whitespace-pre-line">{analysis.summary.outcome}</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-4 border-t border-[#E5E2DA]">
+              <button
+                onClick={() => goToTab('analysis')}
+                className="inline-flex items-center space-x-1 px-3 py-2 rounded-md bg-[#14243D] hover:bg-[#0D182A] text-white text-xs font-medium"
+              >
+                <span>Read the full analysis</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => goToTab('ask')}
+                className="inline-flex items-center space-x-1 px-3 py-2 rounded-md border border-[#E5E2DA] bg-white hover:bg-[#F3F1EB] text-[#14243D] text-xs font-medium"
+              >
+                <span>Ask a question about this judgment</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-[#737986]">
+              Informational only, not legal advice. Always read the certified copy of the judgment.
+            </p>
+          </div>
+
+          <div className="lg:col-span-4 space-y-6">
+            <div className="border border-[#E5E2DA] rounded-lg bg-white p-5 shadow-card space-y-3 text-xs">
+              <h3 className="font-serif font-bold text-sm text-[#14243D]">Case Details</h3>
+              {[
+                ['Court', meta?.court],
+                ['Judgment Date', meta?.decisionDate],
+                ['Case Type', analysis?.caseClassification?.primary],
+                ['Case Number', meta?.caseNumber],
+                ['Bench', benchNames.length ? benchNames.join(', ') : null],
+              ].map(([label, value]) => (
+                <div key={label as string}>
+                  <span className="text-[11px] text-[#737986] block">{label}</span>
+                  <span className="font-medium text-[#14243D]">{value || 'Not identified'}</span>
+                </div>
+              ))}
+              {(analysis?.parties?.length || 0) > 0 && (
+                <div>
+                  <span className="text-[11px] text-[#737986] block">Parties</span>
+                  <ul className="space-y-0.5">
+                    {analysis!.parties.slice(0, 8).map((p, i) => (
+                      <li key={i} className="text-[#14243D]">
+                        <span className="font-medium">{p.name}</span> <span className="text-[#737986]">— {p.role}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 rounded-lg bg-[#FAF9F5] border border-[#E5E2DA] space-y-2">
+              <h3 className="font-serif font-bold text-sm text-[#14243D]">Key Takeaways</h3>
+              {keyTakeaways.length ? (
+                <ul className="space-y-1.5 text-xs text-[#3F4754]">
+                  {keyTakeaways.map((t, i) => (
+                    <li key={i} className="flex items-start space-x-2">
+                      <span className="text-[#A98A4B] font-bold">•</span>
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-[#737986]">{isBusy ? 'Available when the analysis finishes.' : 'No takeaways available.'}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'ask' && <AskJudgmentPanel documentId={documentRecord.id} />}
 
       {/* TAB 1: DOCUMENT VIEW (Screen C: Left Document Canvas, Right Case Summary & Metadata) */}
       {activeTab === 'document' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT: Document / PDF Viewer (62% width on desktop) */}
-          <div className="lg:col-span-7 border border-[#E5E2DA] rounded-lg bg-white shadow-card overflow-hidden flex flex-col">
+          <div className="lg:col-span-12 border border-[#E5E2DA] rounded-lg bg-white shadow-card overflow-hidden flex flex-col">
             {/* Document Viewer Toolbar (Matching Screen C exactly) */}
             <div className="h-10 bg-[#2B2E33] text-[#D1D5DB] px-3 flex items-center justify-between text-xs select-none">
               <div className="flex items-center space-x-2">
@@ -333,299 +565,27 @@ export const AnalysisResults: React.FC = () => {
                   style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
                   className="w-full max-w-xl bg-white text-black p-8 sm:p-12 shadow-2xl rounded-xs text-xs font-serif leading-relaxed space-y-5 transition-transform"
                 >
-                  <div className="text-center space-y-1 font-serif uppercase tracking-wider font-semibold border-b pb-4 border-gray-300">
-                    <p className="text-sm">IN THE SUPREME COURT OF INDIA</p>
-                    <p className="text-[11px] text-gray-700">(CIVIL ORIGINAL JURISDICTION)</p>
-                    <p className="text-xs pt-2 font-bold text-[#14243D]">
-                      {meta?.caseNumber || 'WRIT PETITION (C) NO. 494 OF 2012'}
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 pt-2 text-[11px]">
-                    <div className="flex justify-between items-baseline">
-                      <span className="font-bold">
-                        {analysis?.parties?.[0]?.name || 'JUSTICE K.S. PUTTASWAMY (RETD.)'}
-                      </span>
-                      <span className="italic text-gray-600">... Petitioner</span>
-                    </div>
-
-                    <div className="text-center font-bold italic text-gray-500 py-1">Versus</div>
-
-                    <div className="flex justify-between items-baseline">
-                      <span className="font-bold">
-                        {analysis?.parties?.[1]?.name || 'UNION OF INDIA & ORS.'}
-                      </span>
-                      <span className="italic text-gray-600">... Respondents</span>
-                    </div>
-                  </div>
-
-                  <div className="text-center py-2">
-                    <span className="font-serif font-bold text-xs uppercase tracking-widest border-b border-black pb-0.5">
-                      JUDGMENT
-                    </span>
-                    <p className="text-[11px] font-semibold text-gray-700 mt-1">
-                      {meta?.bench?.[0] || '(Dr. D.Y. Chandrachud, J.)'}
-                    </p>
-                  </div>
-
-                  {/* Body text snippet from extracted document */}
-                  <div className="space-y-3 text-[11px] leading-relaxed text-gray-900 font-serif">
-                    <p>
-                      1. In a constitutional democracy, the right to privacy is an autonomous right. Privacy is central to the dignity of the individual and forms an intrinsic part of life and personal liberty under Article 21 of the Constitution.
-                    </p>
-                    <p>
-                      2. The present reference before this nine-judge Constitution Bench raises a fundamental question touching upon the interpretation of fundamental rights guaranteed by Part III of the Constitution.
-                    </p>
-                    <p>
-                      3. Privacy is not lost merely because an individual participates in modern digital infrastructure. Both spatial and informational autonomy remain protected.
-                    </p>
-                    <p className="pt-2 italic text-gray-600">
-                      [Full verbatim document text loaded from authentic court record...]
-                    </p>
+                  {/* Extracted text of the uploaded document (first part) */}
+                  <div className="text-[11px] leading-relaxed text-gray-900 font-serif whitespace-pre-wrap">
+                    {documentRecord.extractedText
+                      ? documentRecord.extractedText.slice(0, 6000)
+                      : 'No extracted text is available for this document.'}
+                    {documentRecord.extractedText && documentRecord.extractedText.length > 6000 && (
+                      <p className="pt-3 italic text-gray-600">
+                        [Showing the first part of the extracted text. Download the original file for the full judgment.]
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: Structured Summary, Metadata & Key Takeaways (38% width on desktop) */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="border border-[#E5E2DA] rounded-lg bg-white p-5 shadow-card space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[#E5E2DA]">
-                <h2 className="font-serif font-bold text-base text-[#14243D]">
-                  Case Summary
-                </h2>
-                <button
-                  onClick={copySummaryText}
-                  className="inline-flex items-center space-x-1 text-xs text-[#737986] hover:text-[#14243D] transition-colors"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copied' : 'Copy'}</span>
-                </button>
-              </div>
-
-              <p className="text-xs sm:text-sm text-[#3F4754] leading-relaxed">
-                {analysis?.summary?.overview ||
-                  'The Supreme Court unanimously held that the right to privacy is a fundamental right under the Constitution of India. The case arose from challenges to the Aadhaar scheme and raised the broader question of whether privacy is protected under Part III of the Constitution.'}
-              </p>
-
-              {/* Case Metadata Grid (Matching Screen C) */}
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#E5E2DA] text-xs">
-                <div>
-                  <span className="text-[11px] text-[#737986] block">Court</span>
-                  <span className="font-medium text-[#14243D]">
-                    {meta?.court || 'Supreme Court of India'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-[#737986] block">Judgment Date</span>
-                  <span className="font-medium text-[#14243D]">
-                    {meta?.decisionDate || '24 August 2017'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-[#737986] block">Case Type</span>
-                  <span className="font-medium text-[#14243D]">
-                    {analysis?.caseClassification?.primary || 'Constitutional Law'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-[#737986] block">Bench</span>
-                  <span className="font-medium text-[#14243D]">
-                    {meta?.bench?.length ? meta.bench.join(', ') : 'Nine Judges'}
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-[11px] text-[#737986] block">Case Number</span>
-                  <span className="font-medium text-[#14243D]">
-                    {meta?.caseNumber || 'W.P. (C) No. 494 of 2012'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Key Takeaways Section (Matching Screen C shaded box) */}
-              <div className="p-4 rounded-md bg-[#FAF9F5] border border-[#E5E2DA] space-y-2">
-                <h3 className="font-serif font-bold text-xs text-[#14243D]">
-                  Key Takeaways
-                </h3>
-                <ul className="space-y-1.5 text-xs text-[#3F4754]">
-                  <li className="flex items-start space-x-2">
-                    <span className="text-[#A98A4B] font-bold">•</span>
-                    <span>Right to privacy is a fundamental right.</span>
-                  </li>
-                  <li className="flex items-start space-x-2">
-                    <span className="text-[#A98A4B] font-bold">•</span>
-                    <span>Privacy is intrinsic to life and personal liberty under Article 21.</span>
-                  </li>
-                  <li className="flex items-start space-x-2">
-                    <span className="text-[#A98A4B] font-bold">•</span>
-                    <span>The judgment overruled M.P. Sharma and Kharak Singh to the extent they denied the existence of a right to privacy.</span>
-                  </li>
-                  <li className="flex items-start space-x-2">
-                    <span className="text-[#A98A4B] font-bold">•</span>
-                    <span>Privacy encompasses informational, decisional and bodily autonomy.</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* TAB 4: LEGAL PROVISIONS (Screen D: Left Provisions List, Right Detail with Interpretation & Excerpts) */}
-      {activeTab === 'provisions' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT: Constitutional & Statutory Provisions List (~38% width) */}
-          <div className="lg:col-span-5 border border-[#E5E2DA] rounded-lg bg-white p-4 shadow-card space-y-5">
-            {/* Constitutional Section */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold text-[#14243D] uppercase tracking-wider">
-                Constitutional Provisions
-              </h3>
-              <div className="space-y-1.5">
-                {[
-                  { name: 'Article 14', label: 'Right to equality' },
-                  { name: 'Article 19', label: 'Freedoms of speech, expression, etc.' },
-                  { name: 'Article 21', label: 'Protection of life and personal liberty' },
-                  { name: 'Article 32', label: 'Right to constitutional remedies' },
-                ].map((item, idx) => {
-                  const isSelected = selectedProvisionIndex === idx;
-                  return (
-                    <div
-                      key={item.name}
-                      onClick={() => setSelectedProvisionIndex(idx)}
-                      className={`p-3 rounded-md cursor-pointer transition-all flex items-center justify-between border ${
-                        isSelected
-                          ? 'bg-[#EEF4FD] border-[#4269A8]/60 text-[#14243D]'
-                          : 'bg-white border-[#E5E2DA] text-[#3F4754] hover:bg-[#FAF9F5]'
-                      }`}
-                    >
-                      <div>
-                        <div className="text-xs font-bold text-[#14243D]">{item.name}</div>
-                        <div className="text-[11px] text-[#737986] mt-0.5">{item.label}</div>
-                      </div>
-                      {isSelected && <ChevronRight className="w-4 h-4 text-[#4269A8]" />}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Statutory Section */}
-            <div className="space-y-2 pt-2 border-t border-[#E5E2DA]">
-              <h3 className="text-xs font-semibold text-[#14243D] uppercase tracking-wider">
-                Statutory Provisions
-              </h3>
-              <div className="space-y-1.5">
-                {[
-                  {
-                    name: 'Aadhaar (Targeted Delivery of Financial and Other Subsidies, Benefits and Services) Act, 2016',
-                    idx: 4
-                  },
-                  {
-                    name: 'Information Technology Act, 2000',
-                    idx: 5
-                  },
-                ].map((stat) => (
-                  <div
-                    key={stat.name}
-                    onClick={() => setSelectedProvisionIndex(stat.idx)}
-                    className={`p-3 rounded-md border cursor-pointer transition-all ${
-                      selectedProvisionIndex === stat.idx
-                        ? 'bg-[#EEF4FD] border-[#4269A8]/60 text-[#14243D]'
-                        : 'bg-white border-[#E5E2DA] text-[#3F4754] hover:bg-[#FAF9F5]'
-                    }`}
-                  >
-                    <div className="text-xs font-medium text-[#14243D]">{stat.name}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT: Detailed Provision Interpretation & Passages (~62% width) */}
-          <div className="lg:col-span-7 border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-6">
-            {/* Title */}
-            <div>
-              <h2 className="font-serif font-bold text-2xl text-[#14243D]">
-                {selectedProvisionIndex === 0
-                  ? 'Article 14'
-                  : selectedProvisionIndex === 1
-                  ? 'Article 19'
-                  : selectedProvisionIndex === 2
-                  ? 'Article 21'
-                  : selectedProvisionIndex === 3
-                  ? 'Article 32'
-                  : selectedProvisionIndex === 4
-                  ? 'Aadhaar Act, 2016'
-                  : 'Information Technology Act, 2000'}
-              </h2>
-            </div>
-
-            {/* Quoted Statutory / Constitutional Text (Italic blockquote) */}
-            <div className="p-4 rounded-md bg-[#FAF9F5] border border-[#E5E2DA]">
-              <blockquote className="font-serif italic text-xs sm:text-sm text-[#14243D] leading-relaxed">
-                {selectedProvisionIndex === 2
-                  ? '"No person shall be deprived of his life or personal liberty except according to procedure established by law."'
-                  : selectedProvisionIndex === 0
-                  ? '"The State shall not deny to any person equality before the law or the equal protection of the laws within the territory of India."'
-                  : selectedProvisionIndex === 1
-                  ? '"All citizens shall have the right to freedom of speech and expression; to assemble peaceably and without arms; to form associations or unions..."'
-                  : selectedProvisionIndex === 3
-                  ? '"The right to move the Supreme Court by appropriate proceedings for the enforcement of the rights conferred by this Part is guaranteed."'
-                  : '"An Act to provide for, as a good governance, efficient, transparent, and targeted delivery of subsidies, benefits and services, the expenditure for which is incurred from the Consolidated Fund of India..."'}
-              </blockquote>
-            </div>
-
-            {/* How it was interpreted in this case */}
-            <div className="space-y-2">
-              <h3 className="font-serif font-bold text-xs uppercase tracking-wider text-[#14243D]">
-                How it was interpreted in this case
-              </h3>
-              <p className="text-xs sm:text-sm text-[#3F4754] leading-relaxed">
-                {selectedProvisionIndex === 2
-                  ? 'The Court held that the right to privacy is an intrinsic part of the right to life and personal liberty under Article 21. Privacy is essential to human dignity and autonomy.'
-                  : selectedProvisionIndex === 0
-                  ? 'Article 14 guarantees non-arbitrariness in state action. The nine-judge bench confirmed that privacy claims can be adjudicated under Article 14 alongside Article 21.'
-                  : selectedProvisionIndex === 1
-                  ? 'Informational privacy and communicative freedom are directly tethered to the free speech guarantees under Article 19(1)(a).'
-                  : selectedProvisionIndex === 3
-                  ? 'Article 32 allows citizens to invoke the writ jurisdiction of the Supreme Court directly for vindication of fundamental privacy rights.'
-                  : 'The constitutional challenge to the Aadhaar statutory framework proceeded on the basis that data collection must pass the proportionality test.'}
-              </p>
-            </div>
-
-            {/* Relevant Passages */}
-            <div className="space-y-2 pt-2 border-t border-[#E5E2DA]">
-              <h3 className="font-serif font-bold text-xs uppercase tracking-wider text-[#14243D]">
-                Relevant Passages
-              </h3>
-              <div className="p-4 rounded-md border border-[#E5E2DA] bg-[#FFFFFF] shadow-subtle space-y-2">
-                <span className="text-[11px] font-semibold text-[#737986] uppercase tracking-wider">
-                  Page 268
-                </span>
-                <blockquote className="font-serif italic text-xs text-[#14243D] leading-relaxed">
-                  "Privacy is an intrinsic element of life and personal liberty. It is an autonomous constitutional right protected under Article 21."
-                </blockquote>
-              </div>
-            </div>
-
-            {/* Action: View in Document */}
-            <div className="pt-2">
-              <button
-                onClick={() => setActiveTab('document')}
-                className="text-xs font-semibold text-[#14243D] hover:underline inline-flex items-center space-x-1"
-              >
-                <span>View in Document</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: CASE SUMMARY EXPANDED */}
-      {activeTab === 'summary' && (
+      {/* ANALYSIS (fallback engines): facts and issues */}
+      {activeTab === 'analysis' && !report && (
         <div className="border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-6">
           <div className="space-y-2">
             <h2 className="font-serif font-bold text-lg text-[#14243D]">Executive Summary</h2>
@@ -661,7 +621,7 @@ export const AnalysisResults: React.FC = () => {
       )}
 
       {/* TAB 3: PARTIES & COUNSEL */}
-      {activeTab === 'parties' && (
+      {activeTab === 'analysis' && !report && (
         <div className="border border-[#E5E2DA] rounded-lg bg-white shadow-card overflow-hidden">
           <div className="p-4 bg-[#FAF9F5] border-b border-[#E5E2DA]">
             <h2 className="font-serif font-bold text-sm text-[#14243D]">Parties & Legal Counsel</h2>
@@ -688,7 +648,7 @@ export const AnalysisResults: React.FC = () => {
       )}
 
       {/* TAB 5: ARGUMENTS */}
-      {activeTab === 'arguments' && (
+      {activeTab === 'analysis' && !report && (
         <div className="border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-4">
           <h2 className="font-serif font-bold text-base text-[#14243D]">Submissions & Arguments</h2>
           <div className="space-y-3">
@@ -701,8 +661,112 @@ export const AnalysisResults: React.FC = () => {
         </div>
       )}
 
+      {/* TAB 4: LEGAL PROVISIONS (Screen D: Left Provisions List, Right Detail with Interpretation & Excerpts) */}
+      {activeTab === 'analysis' && !report && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* LEFT: Constitutional & Statutory Provisions List (~38% width) */}
+          <div className="lg:col-span-5 border border-[#E5E2DA] rounded-lg bg-white p-4 shadow-card space-y-5">
+            {/* Constitutional Section */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold text-[#14243D] uppercase tracking-wider">
+                Constitutional Provisions
+              </h3>
+              <div className="space-y-1.5">
+                {constitutionalProvisions.length === 0 && <p className="text-[11px] text-[#737986]">None identified.</p>}
+                {constitutionalProvisions.map((item, idx) => {
+                  const isSelected = selectedProvisionIndex === idx;
+                  return (
+                    <div
+                      key={`${item.name}-${idx}`}
+                      onClick={() => setSelectedProvisionIndex(idx)}
+                      className={`p-3 rounded-md cursor-pointer transition-all flex items-center justify-between border ${
+                        isSelected
+                          ? 'bg-[#EEF4FD] border-[#4269A8]/60 text-[#14243D]'
+                          : 'bg-white border-[#E5E2DA] text-[#3F4754] hover:bg-[#FAF9F5]'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-[#14243D]">{item.name}</div>
+                        <div className="text-[11px] text-[#737986] mt-0.5">{item.type}</div>
+                      </div>
+                      {isSelected && <ChevronRight className="w-4 h-4 text-[#4269A8]" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Statutory Section */}
+            <div className="space-y-2 pt-2 border-t border-[#E5E2DA]">
+              <h3 className="text-xs font-semibold text-[#14243D] uppercase tracking-wider">
+                Statutory Provisions
+              </h3>
+              <div className="space-y-1.5">
+                {statutoryProvisions.length === 0 && <p className="text-[11px] text-[#737986]">None identified.</p>}
+                {statutoryProvisions.map((stat, i) => {
+                  const idx = constitutionalProvisions.length + i;
+                  return (
+                    <div
+                      key={`${stat.name}-${idx}`}
+                      onClick={() => setSelectedProvisionIndex(idx)}
+                      className={`p-3 rounded-md border cursor-pointer transition-all ${
+                        selectedProvisionIndex === idx
+                          ? 'bg-[#EEF4FD] border-[#4269A8]/60 text-[#14243D]'
+                          : 'bg-white border-[#E5E2DA] text-[#3F4754] hover:bg-[#FAF9F5]'
+                      }`}
+                    >
+                      <div className="text-xs font-medium text-[#14243D]">{stat.name}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Detailed Provision Interpretation & Passages (~62% width) */}
+          <div className="lg:col-span-7 border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-6">
+            {activeProvision ? (
+              <>
+                <div>
+                  <h2 className="font-serif font-bold text-2xl text-[#14243D]">{activeProvision.name}</h2>
+                  <span className="text-[11px] text-[#737986]">{activeProvision.type}</span>
+                </div>
+
+                {activeProvision.evidence && (
+                  <div className="p-4 rounded-md bg-[#FAF9F5] border border-[#E5E2DA] space-y-1">
+                    <h3 className="font-serif font-bold text-xs uppercase tracking-wider text-[#14243D]">In simple words</h3>
+                    <p className="text-xs sm:text-sm text-[#14243D] leading-relaxed">{activeProvision.evidence}</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <h3 className="font-serif font-bold text-xs uppercase tracking-wider text-[#14243D]">
+                    How it was interpreted in this case
+                  </h3>
+                  <p className="text-xs sm:text-sm text-[#3F4754] leading-relaxed">{activeProvision.context}</p>
+                </div>
+
+              </>
+            ) : (
+              <p className="text-xs text-[#737986]">No legal provisions were identified for this document.</p>
+            )}
+
+            {/* Action: View in Document */}
+            <div className="pt-2">
+              <button
+                onClick={() => setActiveTab('document')}
+                className="text-xs font-semibold text-[#14243D] hover:underline inline-flex items-center space-x-1"
+              >
+                <span>View in Document</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TAB 6: COURT REASONING */}
-      {activeTab === 'reasoning' && (
+      {activeTab === 'analysis' && !report && (
         <div className="border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-4">
           <h2 className="font-serif font-bold text-base text-[#14243D]">Court Reasoning & Ratio Decidendi</h2>
           <div className="space-y-3">
@@ -717,7 +781,7 @@ export const AnalysisResults: React.FC = () => {
       )}
 
       {/* TAB 7: OUTCOME */}
-      {activeTab === 'outcome' && (
+      {activeTab === 'analysis' && !report && (
         <div className="border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-4">
           <div className="flex items-center space-x-2">
             <span className="text-xs uppercase font-bold tracking-wider text-[#737986]">Final Decision:</span>
@@ -725,32 +789,12 @@ export const AnalysisResults: React.FC = () => {
               {analysis?.summary?.outcomeCategory}
             </span>
           </div>
-          <div className="p-4 rounded-md bg-[#FAF9F5] border border-[#E5E2DA] font-serif text-xs sm:text-sm text-[#14243D] leading-relaxed">
+          <div className="p-4 rounded-md bg-[#FAF9F5] border border-[#E5E2DA] font-serif text-xs sm:text-sm text-[#14243D] leading-relaxed whitespace-pre-line">
             {analysis?.summary?.outcome}
           </div>
         </div>
       )}
 
-      {/* TAB 8: PRECEDENTS */}
-      {activeTab === 'precedents' && (
-        <div className="border border-[#E5E2DA] rounded-lg bg-white p-6 shadow-card space-y-4">
-          <h2 className="font-serif font-bold text-base text-[#14243D]">Cited Precedents & Authorities</h2>
-          <div className="space-y-2 text-xs text-[#3F4754]">
-            <div className="p-3 border border-[#E5E2DA] rounded-md">
-              <span className="font-bold text-[#14243D]">M.P. Sharma v. Satish Chandra (1954) SCR 1077</span>
-              <p className="text-[#737986] mt-0.5">Eight-judge Bench decision — Overruled to the extent it held privacy is not a fundamental right.</p>
-            </div>
-            <div className="p-3 border border-[#E5E2DA] rounded-md">
-              <span className="font-bold text-[#14243D]">Kharak Singh v. State of U.P. (1963) 2 SCR 129</span>
-              <p className="text-[#737986] mt-0.5">Six-judge Bench decision — Overruled regarding nocturnal domiciliary visits and right to privacy.</p>
-            </div>
-            <div className="p-3 border border-[#E5E2DA] rounded-md">
-              <span className="font-bold text-[#14243D]">Maneka Gandhi v. Union of India (1978) 1 SCC 248</span>
-              <p className="text-[#737986] mt-0.5">Affirmed — Procedure established by law under Article 21 must be just, fair, and reasonable.</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

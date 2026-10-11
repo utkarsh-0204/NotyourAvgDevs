@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document as MongooseDocument } from 'mongoose';
 import { LegalAnalysisResult } from '../schemas/analysisSchema.js';
+import { PageText, PageSource } from '../services/textExtractor.js';
 
 export interface IDocumentRecord {
   id: string;
@@ -9,6 +10,10 @@ export interface IDocumentRecord {
   mimeType: string;
   filePath: string;
   extractedText: string;
+  // Per-page text used for page-referenced summaries and Q&A (absent on records created before this field existed)
+  pages?: PageText[];
+  pageSource?: PageSource;
+  emptyPages?: number[];
   pageCount?: number;
   isScannedPdf?: boolean;
   ocrRequired?: boolean;
@@ -30,6 +35,9 @@ const DocumentSchema = new Schema<DocumentDocument>(
     mimeType: { type: String, required: true },
     filePath: { type: String, required: true },
     extractedText: { type: String, default: '' },
+    pages: { type: [{ page: Number, text: String, _id: false }], default: undefined },
+    pageSource: { type: String, enum: ['pdf', 'segment'] },
+    emptyPages: { type: [Number], default: undefined },
     pageCount: { type: Number, default: 1 },
     isScannedPdf: { type: Boolean, default: false },
     ocrRequired: { type: Boolean, default: false },
